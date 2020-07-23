@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import hashlib
 import struct
 
@@ -6,7 +7,7 @@ import base58
 from messages import schema
 from messages.crypto import PublicKey, Signature
 from messages.network import (EdgeInfo, GenesisId, Handshake, PeerChainInfo,
-                              PeerMessage)
+                              PeerMessage, RoutedMessage, PeerIdOrHash)
 from serializer import BinarySerializer
 from nacl.signing import SigningKey
 from typing import Optional
@@ -29,9 +30,13 @@ class Connection:
         self.writer.write(raw_message)
         await self.writer.drain()
 
+    # returns None on timeout
     async def recv(self, expected=None):
         while True:
             response_raw = await self.recv_raw()
+            if response_raw is None:
+                return None
+
             response = BinarySerializer(schema).deserialize(
                 response_raw, PeerMessage)
 
@@ -39,7 +44,14 @@ class Connection:
                 return response
 
     async def recv_raw(self):
-        length = await self.reader.read(4)
+        try:
+            length = await asyncio.wait_for(self.reader.read(4), 5)
+        except concurrent.futures.TimeoutError:
+            return None
+
+        if len(length) < 4:
+            return None
+
         length = struct.unpack('I', length)[0]
         response = await self.reader.read(length)
         return response
@@ -143,15 +155,16 @@ async def run_handshake(conn: Connection, target_public_key: PublicKey, key_pair
 
     if response.enum == 'HandshakeFailure' and response.HandshakeFailure[1].enum == 'ProtocolVersionMismatch':
         pvm = response.HandshakeFailure[1].ProtocolVersionMismatch
+        print(pvm)
         handshake.Handshake.version = pvm
         sign_handshake(key_pair, handshake.Handshake)
         await conn.send(handshake)
         response = await conn.recv()
 
-    assert response.enum == 'Handshake', response.enum
+    assert response.enum == 'Handshake', response.enum if response.enum != 'HandshakeFailure' else response.HandshakeFailure[1].enum
 
 
-def create_and_sign_routed_peer_message(routed_msg_body, target_node, my_key_pair_nacl, schema):
+def create_and_sign_routed_peer_message(routed_msg_body, target_node, my_key_pair_nacl):
     routed_msg = RoutedMessage()
     routed_msg.target = PeerIdOrHash()
     routed_msg.target.enum = 'PeerId'
