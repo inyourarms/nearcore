@@ -37,6 +37,7 @@ pytest --timeout=300 sanity/gc_after_sync1.py
 pytest --timeout=300 sanity/gc_sync_after_sync.py
 pytest --timeout=300 sanity/gc_sync_after_sync.py swap_nodes
 pytest --timeout=300 sanity/large_messages.py
+pytest sanity/repro_2916.py
 # TODO: re-enable after #2949 is fixed
 # pytest --timeout=240 sanity/validator_switch_key.py
 pytest sanity/proxy_simple.py
@@ -51,11 +52,11 @@ pytest contracts/deploy_call_smart_contract.py
 pytest --timeout=240 contracts/gibberish.py
 
 # python stress tests
-pytest --timeout=2000 stress/stress.py 3 3 3 0 staking transactions local_network
+# pytest --timeout=2000 stress/stress.py 3 3 3 0 staking transactions local_network
 pytest --timeout=2000 stress/stress.py 3 3 3 0 staking transactions node_restart
-pytest --timeout=2000 stress/stress.py 3 2 4 0 staking transactions node_set
+# pytest --timeout=2000 stress/stress.py 3 2 4 0 staking transactions node_set
 
-pytest stress/network_stress.py
+# pytest stress/network_stress.py
 
 # python spec tests
 pytest spec/network/handshake.py
