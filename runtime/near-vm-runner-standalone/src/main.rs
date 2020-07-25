@@ -265,7 +265,11 @@ fn main() {
             vm_kind,
         ),
     };
-
+    
+    let all_gas = match outcome.clone() {
+        Some(outcome) => outcome.burnt_gas,
+        _ => 1,
+    };
     println!(
         "{}",
         serde_json::to_string(&StandaloneOutput {
@@ -278,13 +282,19 @@ fn main() {
     );
 
     if !profile_data.is_empty() {
-        let mut sum = 0u64;
+        let mut host_gas = 0u64;
         for e in ExtCosts::iter() {
-            sum += profile_data[e as usize];
+            host_gas += profile_data[e as usize];
         }
         for e in ExtCosts::iter() {
-            println!("{:?} -> {} [{}%]", e, profile_data[e as usize],
-                     Ratio::new(profile_data[e as usize] * 100, sum).to_integer());
+            println!("{:?} -> {} [{}% all, {}% host]", e, profile_data[e as usize],
+                     Ratio::new(profile_data[e as usize] * 100, all_gas).to_integer(),
+                     Ratio::new(profile_data[e as usize] * 100, host_gas).to_integer(),
+                );
         }
+        println!("WASM execution: {} [{}% all]",
+                 all_gas - host_gas,
+                 Ratio::new((all_gas - host_gas) * 100, all_gas).to_integer()
+            )
     }
 }
