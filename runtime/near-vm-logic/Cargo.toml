@@ -19,6 +19,8 @@ base64 = "0.11"
 serde = { version = "1", features = ["derive"] }
 sha2 = "0.8"
 sha3 = "0.8"
+strum = "0.18"
+strum_macros = "0.18"
 
 near-runtime-fees = { path = "../near-runtime-fees", version = "1.0.0" }
 near-vm-errors = { path = "../near-vm-errors", version = "1.0.0" }

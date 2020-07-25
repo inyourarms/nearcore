@@ -182,6 +182,7 @@ pub fn run_wasmer<'a>(
     wasm_config: &'a VMConfig,
     fees_config: &'a RuntimeFeesConfig,
     promise_results: &'a [PromiseResult],
+    profile: Option<&'a mut Vec<u64>>,
 ) -> (Option<VMOutcome>, Option<VMError>) {
     if !cfg!(target_arch = "x86") && !cfg!(target_arch = "x86_64") {
         // TODO(#1940): Remove once NaN is standardized by the VM.
@@ -211,7 +212,7 @@ pub fn run_wasmer<'a>(
     let memory_copy = memory.clone();
 
     let mut logic =
-        VMLogic::new(ext, context, wasm_config, fees_config, promise_results, &mut memory);
+        VMLogic::new(ext, context, wasm_config, fees_config, promise_results, &mut memory, profile);
 
     if logic.add_contract_compile_fee(code.len() as u64).is_err() {
         return (

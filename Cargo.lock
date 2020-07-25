@@ -2702,6 +2702,8 @@ dependencies = [
  "serde_json",
  "sha2",
  "sha3",
+ "strum",
+ "strum_macros",
 ]
 
 [[package]]
@@ -2732,8 +2734,11 @@ dependencies = [
  "near-runtime-fees",
  "near-vm-logic",
  "near-vm-runner",
+ "num-rational",
  "serde",
  "serde_json",
+ "strum",
+ "strum_macros",
 ]
 
 [[package]]

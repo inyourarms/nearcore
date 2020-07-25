@@ -2,6 +2,7 @@ use crate::types::Gas;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
+use strum_macros::{EnumCount, EnumIter};
 
 #[derive(Clone, Copy, Debug, Hash, Serialize, Deserialize)]
 pub enum VMKind {
@@ -432,7 +433,7 @@ impl ExtCostsConfig {
 }
 
 /// Strongly-typed representation of the fees for counting.
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug, PartialOrd, Ord, EnumIter, EnumCount)]
 #[allow(non_camel_case_types)]
 pub enum ExtCosts {
     base,

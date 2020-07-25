@@ -14,6 +14,7 @@ pub use dependencies::{External, MemoryLike, ValuePtr};
 pub use logic::{VMLogic, VMOutcome};
 pub use near_vm_errors::{HostError, VMLogicError};
 pub use types::ReturnData;
+pub use strum_macros;
 
 #[cfg(feature = "costs_counting")]
 pub use gas_counter::EXT_COSTS_COUNTER;

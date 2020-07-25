@@ -114,6 +114,7 @@ pub mod wasmtime_runner {
         wasm_config: &'a VMConfig,
         fees_config: &'a RuntimeFeesConfig,
         promise_results: &'a [PromiseResult],
+        profile: Option<&'a mut Vec<u64>>,
     ) -> (Option<VMOutcome>, Option<VMError>) {
         let engine = Engine::default();
         let store = Store::new(&engine);
@@ -132,7 +133,7 @@ pub mod wasmtime_runner {
         let memory_copy = memory.clone();
         let mut linker = Linker::new(&store);
         let mut logic =
-            VMLogic::new(ext, context, wasm_config, fees_config, promise_results, &mut memory);
+            VMLogic::new(ext, context, wasm_config, fees_config, promise_results, &mut memory, profile);
         if logic.add_contract_compile_fee(code.len() as u64).is_err() {
             return (
                 Some(logic.outcome()),

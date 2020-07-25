@@ -42,7 +42,7 @@ pub struct VMLogic<'a> {
     current_account_locked_balance: Balance,
     /// Storage usage of the current account at the moment
     current_storage_usage: StorageUsage,
-    gas_counter: GasCounter,
+    gas_counter: GasCounter<'a>,
     /// What method returns.
     return_data: ReturnData,
     /// Logs written by the runtime.
@@ -98,6 +98,7 @@ impl<'a> VMLogic<'a> {
         fees_config: &'a RuntimeFeesConfig,
         promise_results: &'a [PromiseResult],
         memory: &'a mut dyn MemoryLike,
+        profile: Option<&'a mut Vec<u64> >,
     ) -> Self {
         ext.reset_touched_nodes_counter();
         // Overflow should be checked before calling VMLogic.
@@ -114,6 +115,7 @@ impl<'a> VMLogic<'a> {
             max_gas_burnt,
             context.prepaid_gas,
             context.is_view,
+            profile,
         );
         Self {
             ext,

@@ -12,7 +12,7 @@ thread_local! {
 type Result<T> = ::std::result::Result<T, VMLogicError>;
 
 /// Gas counter (a part of VMlogic)
-pub struct GasCounter {
+pub struct GasCounter<'a> {
     /// The amount of gas that was irreversibly used for contract execution.
     burnt_gas: Gas,
     /// `burnt_gas` + gas that was attached to the promises.
@@ -22,16 +22,19 @@ pub struct GasCounter {
     prepaid_gas: Gas,
     is_view: bool,
     ext_costs_config: ExtCostsConfig,
+    /// Where to store profile data, if needed.
+    profile: Option<&'a mut Vec<u64>>,
 }
 
-impl GasCounter {
+impl<'a> GasCounter<'a> {
     pub fn new(
         ext_costs_config: ExtCostsConfig,
         max_gas_burnt: Gas,
         prepaid_gas: Gas,
         is_view: bool,
+        profile: Option<&'a mut Vec<u64> >,
     ) -> Self {
-        Self { ext_costs_config, burnt_gas: 0, used_gas: 0, max_gas_burnt, prepaid_gas, is_view }
+        Self { ext_costs_config, burnt_gas: 0, used_gas: 0, max_gas_burnt, prepaid_gas, is_view, profile }
     }
 
     pub fn deduct_gas(&mut self, burn_gas: Gas, use_gas: Gas) -> Result<()> {
@@ -80,6 +83,10 @@ impl GasCounter {
         let use_gas = num_bytes
             .checked_mul(cost.value(&self.ext_costs_config))
             .ok_or(HostError::IntegerOverflow)?;
+        match &mut self.profile {
+            Some(profile) => *profile.get_mut(cost as usize).unwrap() += use_gas,
+            _ => {}
+        };
         self.deduct_gas(use_gas, use_gas)
     }
 
@@ -87,6 +94,10 @@ impl GasCounter {
     pub fn pay_base(&mut self, cost: ExtCosts) -> Result<()> {
         self.inc_ext_costs_counter(cost, 1);
         let base_fee = cost.value(&self.ext_costs_config);
+        match &mut self.profile {
+            Some(profile) => *profile.get_mut(cost as usize).unwrap() += base_fee,
+            _ => {}
+        };
         self.deduct_gas(base_fee, base_fee)
     }
 
@@ -136,7 +147,8 @@ mod tests {
     use super::*;
     #[test]
     fn test_deduct_gas() {
-        let mut counter = GasCounter::new(ExtCostsConfig::default(), 10, 10, false);
+        let mut counter = GasCounter::new(
+            ExtCostsConfig::default(), 10, 10, false, None);
         counter.deduct_gas(5, 10).expect("deduct_gas should work");
         assert_eq!(counter.burnt_gas(), 5);
         assert_eq!(counter.used_gas(), 10);
@@ -145,7 +157,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_prepaid_gas_min() {
-        let mut counter = GasCounter::new(ExtCostsConfig::default(), 100, 10, false);
+        let mut counter = GasCounter::new(ExtCostsConfig::default(), 100, 10, false, None);
         counter.deduct_gas(10, 5).unwrap();
     }
 }

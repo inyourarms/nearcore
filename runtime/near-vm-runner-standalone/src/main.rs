@@ -10,13 +10,15 @@ use clap::{App, Arg};
 use near_runtime_fees::RuntimeFeesConfig;
 use near_vm_logic::mocks::mock_external::{MockedExternal, Receipt};
 use near_vm_logic::types::PromiseResult;
-use near_vm_logic::{VMConfig, VMContext, VMOutcome};
-use near_vm_runner::{run, VMError};
+use near_vm_logic::{VMConfig, VMContext, VMOutcome, VMKind, ExtCosts};
+use near_vm_runner::{run_vm, run_vm_profiled, VMError};
+use num_rational::{Ratio};
 use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::{fmt, fs};
+use strum::{EnumCount, IntoEnumIterator};
 
 #[derive(Debug, Clone)]
 struct State(HashMap<Vec<u8>, Vec<u8>>);
@@ -160,7 +162,28 @@ fn main() {
                 .help("File path that contains the Wasm code to run.")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("vm-kind")
+                .long("vm-kind")
+                .value_name("VM_KIND")
+                .help("Select VM kind to run.")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("profile-gas")
+                .long("profile-gas")
+                .help("Profiles gas consumption.")
+        )
         .get_matches();
+
+    let vm_kind: VMKind = match matches.value_of("vm-kind") {
+        Some(value) => match value  {
+            "wasmtime" => VMKind::Wasmtime,
+            "wasmer" => VMKind::Wasmer,
+            _ => VMKind::default(),
+        }
+        None => VMKind::default(),
+    };
 
     let mut context: VMContext = match matches.value_of("context") {
         Some(value) => serde_json::from_str(value).unwrap(),
@@ -211,16 +234,37 @@ fn main() {
         fs::read(matches.value_of("wasm-file").expect("Wasm file needs to be specified")).unwrap();
 
     let fees = RuntimeFeesConfig::default();
-    let (outcome, err) = run(
-        vec![],
-        &code,
-        &method_name,
-        &mut fake_external,
-        context,
-        &config,
-        &fees,
-        &promise_results,
-    );
+    let mut profile_data = vec!(0u64; ExtCosts::count());
+    let profile =  if matches.is_present("profile-gas") {
+        Some(&mut profile_data)
+    } else {
+        None
+    };
+    let (outcome, err) = match profile {
+        Some(profile) => run_vm_profiled(
+            vec![],
+            &code,
+            &method_name,
+            &mut fake_external,
+            context,
+            &config,
+            &fees,
+            &promise_results,
+            vm_kind,
+            profile,
+        ),
+        None => run_vm(
+            vec![],
+            &code,
+            &method_name,
+            &mut fake_external,
+            context,
+            &config,
+            &fees,
+            &promise_results,
+            vm_kind,
+        ),
+    };
 
     println!(
         "{}",
@@ -231,5 +275,16 @@ fn main() {
             state: State(fake_external.fake_trie),
         })
         .unwrap()
-    )
+    );
+
+    if !profile_data.is_empty() {
+        let mut sum = 0u64;
+        for e in ExtCosts::iter() {
+            sum += profile_data[e as usize];
+        }
+        for e in ExtCosts::iter() {
+            println!("{:?} -> {} [{}%]", e, profile_data[e as usize],
+                     Ratio::new(profile_data[e as usize] * 100, sum).to_integer());
+        }
+    }
 }
