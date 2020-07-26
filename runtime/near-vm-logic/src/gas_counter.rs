@@ -2,6 +2,7 @@ use crate::config::{ExtCosts, ExtCostsConfig};
 use crate::types::Gas;
 use crate::{HostError, VMLogicError};
 use near_runtime_fees::Fee;
+use strum::EnumCount;
 
 #[cfg(feature = "costs_counting")]
 thread_local! {
@@ -119,6 +120,11 @@ impl<'a> GasCounter<'a> {
                 num_bytes.checked_mul(per_byte_fee.exec_fee()).ok_or(HostError::IntegerOverflow)?,
             )
             .ok_or(HostError::IntegerOverflow)?;
+        match &mut self.profile {
+            Some(profile) => *profile.get_mut(ExtCosts::count() + 1).unwrap()
+                += burn_gas,
+            _ => {}
+        };
 
         self.deduct_gas(burn_gas, use_gas)
     }
@@ -131,6 +137,11 @@ impl<'a> GasCounter<'a> {
         let burn_gas = base_fee.send_fee(sir);
         let use_gas =
             burn_gas.checked_add(base_fee.exec_fee()).ok_or(HostError::IntegerOverflow)?;
+        match &mut self.profile {
+            Some(profile) => *profile.get_mut(ExtCosts::count() + 1).unwrap()
+                += burn_gas,
+            _ => {}
+        };
         self.deduct_gas(burn_gas, use_gas)
     }
 

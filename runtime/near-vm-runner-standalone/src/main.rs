@@ -234,7 +234,7 @@ fn main() {
         fs::read(matches.value_of("wasm-file").expect("Wasm file needs to be specified")).unwrap();
 
     let fees = RuntimeFeesConfig::default();
-    let mut profile_data = vec!(0u64; ExtCosts::count());
+    let mut profile_data = vec!(0u64; ExtCosts::count() + 1);
     let profile =  if matches.is_present("profile-gas") {
         Some(&mut profile_data)
     } else {
@@ -292,9 +292,14 @@ fn main() {
                      Ratio::new(profile_data[e as usize] * 100, host_gas).to_integer(),
                 );
         }
+        let action_gas = profile_data[ExtCosts::count()];
+        println!("Action gas: {} [{}% all]",
+                 action_gas,
+                 Ratio::new(action_gas * 100, all_gas).to_integer()
+        );
         println!("WASM execution: {} [{}% all]",
-                 all_gas - host_gas,
-                 Ratio::new((all_gas - host_gas) * 100, all_gas).to_integer()
-            )
+                 all_gas - host_gas - action_gas,
+                 Ratio::new((all_gas - host_gas - action_gas) * 100, all_gas).to_integer()
+        );
     }
 }
