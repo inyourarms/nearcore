@@ -41,9 +41,9 @@ jobs:
         ssh-add ~/.ssh/id_rsa 
         ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
         
-        scp -r -o StrictHostKeyChecking=no target/release/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/
+        scp -r -o StrictHostKeyChecking=no target/release/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/near/
         
     # Run nearup with binaries
     - name: Run nearup with binaries
       run: |
-        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} '~/.nearup/nearup stop && ~/.nearup/nearup betanet --nodocker --binary-path ~/release/' 
+        ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'sudo ~/.nearup/nearup stop && sudo ~/.nearup/nearup betanet --nodocker --binary-path ~/near/release/' 
