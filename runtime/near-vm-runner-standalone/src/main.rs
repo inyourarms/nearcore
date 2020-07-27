@@ -10,15 +10,16 @@ use clap::{App, Arg};
 use near_runtime_fees::RuntimeFeesConfig;
 use near_vm_logic::mocks::mock_external::{MockedExternal, Receipt};
 use near_vm_logic::types::PromiseResult;
-use near_vm_logic::{VMConfig, VMContext, VMOutcome, VMKind, ExtCosts};
+use near_vm_logic::{Actions, ExtCosts, VMConfig, VMContext, VMKind, VMOutcome};
 use near_vm_runner::{run_vm, run_vm_profiled, VMError};
-use num_rational::{Ratio};
+use num_rational::Ratio;
 use serde::de::{MapAccess, Visitor};
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::{fmt, fs};
-use strum::{EnumCount, IntoEnumIterator};
 
 #[derive(Debug, Clone)]
 struct State(HashMap<Vec<u8>, Vec<u8>>);
@@ -177,11 +178,11 @@ fn main() {
         .get_matches();
 
     let vm_kind: VMKind = match matches.value_of("vm-kind") {
-        Some(value) => match value  {
+        Some(value) => match value {
             "wasmtime" => VMKind::Wasmtime,
             "wasmer" => VMKind::Wasmer,
             _ => VMKind::default(),
-        }
+        },
         None => VMKind::default(),
     };
 
@@ -234,14 +235,23 @@ fn main() {
         fs::read(matches.value_of("wasm-file").expect("Wasm file needs to be specified")).unwrap();
 
     let fees = RuntimeFeesConfig::default();
-    let mut profile_data = vec!(0u64; ExtCosts::count() + 1);
-    let profile =  if matches.is_present("profile-gas") {
-        Some(&mut profile_data)
+    let profile_data = Rc::new(RefCell::new(vec![0u64; ExtCosts::count() + Actions::count() + 1]));
+    let do_profile = matches.is_present("profile-gas");
+    let (outcome, err) = if do_profile {
+        run_vm_profiled(
+            vec![],
+            &code,
+            &method_name,
+            &mut fake_external,
+            context,
+            &config,
+            &fees,
+            &promise_results,
+            vm_kind,
+            Rc::clone(&profile_data),
+        )
     } else {
-        None
-    };
-    let (outcome, err) = match profile {
-        Some(profile) => run_vm_profiled(
+        run_vm(
             vec![],
             &code,
             &method_name,
@@ -251,21 +261,9 @@ fn main() {
             &fees,
             &promise_results,
             vm_kind,
-            profile,
-        ),
-        None => run_vm(
-            vec![],
-            &code,
-            &method_name,
-            &mut fake_external,
-            context,
-            &config,
-            &fees,
-            &promise_results,
-            vm_kind,
-        ),
+        )
     };
-    
+
     let all_gas = match outcome.clone() {
         Some(outcome) => outcome.burnt_gas,
         _ => 1,
@@ -281,25 +279,60 @@ fn main() {
         .unwrap()
     );
 
-    if !profile_data.is_empty() {
+    if do_profile {
+        let profile_data = profile_data.borrow();
+
         let mut host_gas = 0u64;
-        for e in ExtCosts::iter() {
+        for e in 0..ExtCosts::count() - 1 {
             host_gas += profile_data[e as usize];
         }
-        for e in ExtCosts::iter() {
-            println!("{:?} -> {} [{}% all, {}% host]", e, profile_data[e as usize],
-                     Ratio::new(profile_data[e as usize] * 100, all_gas).to_integer(),
-                     Ratio::new(profile_data[e as usize] * 100, host_gas).to_integer(),
-                );
+
+        let mut action_gas = 0u64;
+        for e in 0..Actions::count() - 1 {
+            action_gas += profile_data[e as usize + ExtCosts::count()];
         }
-        let action_gas = profile_data[ExtCosts::count()];
-        println!("Action gas: {} [{}% all]",
-                 action_gas,
-                 Ratio::new(action_gas * 100, all_gas).to_integer()
+
+        println!(
+            "Host gas: {} [{}% all]",
+            host_gas,
+            Ratio::new(host_gas * 100, all_gas).to_integer()
         );
-        println!("WASM execution: {} [{}% all]",
-                 all_gas - host_gas - action_gas,
-                 Ratio::new((all_gas - host_gas - action_gas) * 100, all_gas).to_integer()
+        println!(
+            "Action gas: {} [{}% all]",
+            action_gas,
+            Ratio::new(action_gas * 100, all_gas).to_integer()
         );
+        println!(
+            "WASM execution: {} [{}% all]",
+            all_gas - host_gas - action_gas,
+            Ratio::new((all_gas - host_gas - action_gas) * 100, all_gas).to_integer()
+        );
+        println!("------------------------------");
+        println!("------ Host functions --------");
+        for e in 0..ExtCosts::count() - 1 {
+            let d = profile_data[e];
+            if d != 0 {
+                println!(
+                    "{} -> {} [{}% all, {}% host]",
+                    ExtCosts::name_of(e),
+                    d,
+                    Ratio::new(d * 100, all_gas).to_integer(),
+                    Ratio::new(d * 100, host_gas).to_integer(),
+                );
+            }
+        }
+        println!("------ Actions --------");
+        for e in 0..Actions::count() - 1 {
+            let d = profile_data[e + ExtCosts::count()];
+            if d != 0 {
+                println!(
+                    "{} -> {} [{}% all]",
+                    Actions::name_of(e),
+                    d,
+                    Ratio::new(d * 100, all_gas).to_integer()
+                );
+            }
+        }
+        println!("------------------------------");
     }
 }

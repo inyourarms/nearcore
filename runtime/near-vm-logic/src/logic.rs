@@ -1,11 +1,12 @@
+use crate::config::Actions;
 use crate::config::ExtCosts::*;
 use crate::config::VMConfig;
 use crate::context::VMContext;
 use crate::dependencies::{External, MemoryLike};
 use crate::gas_counter::GasCounter;
 use crate::types::{
-    AccountId, Balance, EpochHeight, Gas, PromiseIndex, PromiseResult, ReceiptIndex, ReturnData,
-    StorageUsage,
+    AccountId, Balance, EpochHeight, Gas, ProfileData, PromiseIndex, PromiseResult, ReceiptIndex,
+    ReturnData, StorageUsage,
 };
 use crate::utils::split_method_names;
 use crate::{ExtCosts, HostError, VMLogicError, ValuePtr};
@@ -42,7 +43,7 @@ pub struct VMLogic<'a> {
     current_account_locked_balance: Balance,
     /// Storage usage of the current account at the moment
     current_storage_usage: StorageUsage,
-    gas_counter: GasCounter<'a>,
+    gas_counter: GasCounter,
     /// What method returns.
     return_data: ReturnData,
     /// Logs written by the runtime.
@@ -98,7 +99,7 @@ impl<'a> VMLogic<'a> {
         fees_config: &'a RuntimeFeesConfig,
         promise_results: &'a [PromiseResult],
         memory: &'a mut dyn MemoryLike,
-        profile: Option<&'a mut Vec<u64> >,
+        profile: Option<ProfileData>,
     ) -> Self {
         ext.reset_touched_nodes_counter();
         // Overflow should be checked before calling VMLogic.
@@ -1182,8 +1183,11 @@ impl<'a> VMLogic<'a> {
         }
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
 
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.create_account_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.create_account_cost,
+            sir,
+            Actions::create_account,
+        )?;
 
         self.ext.append_action_create_account(receipt_idx)?;
         Ok(())
@@ -1231,12 +1235,16 @@ impl<'a> VMLogic<'a> {
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
 
         let num_bytes = code.len() as u64;
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.deploy_contract_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.deploy_contract_cost,
+            sir,
+            Actions::deploy_contract,
+        )?;
         self.gas_counter.pay_action_per_byte(
             &self.fees_config.action_creation_config.deploy_contract_cost_per_byte,
             num_bytes,
             sir,
+            Actions::deploy_contract,
         )?;
 
         self.ext.append_action_deploy_contract(receipt_idx, code)?;
@@ -1289,12 +1297,16 @@ impl<'a> VMLogic<'a> {
 
         // Input can't be large enough to overflow
         let num_bytes = method_name.len() as u64 + arguments.len() as u64;
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.function_call_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.function_call_cost,
+            sir,
+            Actions::function_call,
+        )?;
         self.gas_counter.pay_action_per_byte(
             &self.fees_config.action_creation_config.function_call_cost_per_byte,
             num_bytes,
             sir,
+            Actions::function_call,
         )?;
         // Prepaid gas
         self.gas_counter.deduct_gas(0, gas)?;
@@ -1337,8 +1349,11 @@ impl<'a> VMLogic<'a> {
 
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
 
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.transfer_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.transfer_cost,
+            sir,
+            Actions::transfer,
+        )?;
 
         self.deduct_balance(amount)?;
 
@@ -1382,8 +1397,11 @@ impl<'a> VMLogic<'a> {
 
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
 
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.stake_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.stake_cost,
+            sir,
+            Actions::stake,
+        )?;
 
         self.ext.append_action_stake(receipt_idx, amount, public_key)?;
         Ok(())
@@ -1427,6 +1445,7 @@ impl<'a> VMLogic<'a> {
         self.gas_counter.pay_action_base(
             &self.fees_config.action_creation_config.add_key_cost.full_access_cost,
             sir,
+            Actions::add_key,
         )?;
 
         self.ext.append_action_add_key_with_full_access(receipt_idx, public_key, nonce)?;
@@ -1486,11 +1505,13 @@ impl<'a> VMLogic<'a> {
         self.gas_counter.pay_action_base(
             &self.fees_config.action_creation_config.add_key_cost.function_call_cost,
             sir,
+            Actions::function_call,
         )?;
         self.gas_counter.pay_action_per_byte(
             &self.fees_config.action_creation_config.add_key_cost.function_call_cost_per_byte,
             num_bytes,
             sir,
+            Actions::function_call,
         )?;
 
         self.ext.append_action_add_key_with_function_call(
@@ -1538,8 +1559,11 @@ impl<'a> VMLogic<'a> {
 
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
 
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.delete_key_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.delete_key_cost,
+            sir,
+            Actions::delete_key,
+        )?;
 
         self.ext.append_action_delete_key(receipt_idx, public_key)?;
         Ok(())
@@ -1579,8 +1603,11 @@ impl<'a> VMLogic<'a> {
 
         let (receipt_idx, sir) = self.promise_idx_to_receipt_idx_with_sir(promise_idx)?;
 
-        self.gas_counter
-            .pay_action_base(&self.fees_config.action_creation_config.delete_account_cost, sir)?;
+        self.gas_counter.pay_action_base(
+            &self.fees_config.action_creation_config.delete_account_cost,
+            sir,
+            Actions::delete_account,
+        )?;
 
         self.ext.append_action_delete_account(receipt_idx, beneficiary_id)?;
         Ok(())

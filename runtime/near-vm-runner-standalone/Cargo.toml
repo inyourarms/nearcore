@@ -23,10 +23,9 @@ serde_json = "1"
 clap = "2.33.0"
 base64 = "0.11"
 strum = "0.18"
-strum_macros = "0.18"
 num-rational = { version = "0.2.4" }
 
-near-vm-logic = { path = "../near-vm-logic", version = "1.0.0"}
+near-vm-logic = { path = "../near-vm-logic", version = "1.0.0", features = ["costs_counting"]}
 near-vm-runner = { path = "../near-vm-runner", version = "1.0.0", features = ["wasmtime_vm"] }
 near-runtime-fees = { path = "../near-runtime-fees", version = "1.0.0" }
 

@@ -1,8 +1,7 @@
-use crate::config::{ExtCosts, ExtCostsConfig};
-use crate::types::Gas;
+use crate::config::{Actions, ExtCosts, ExtCostsConfig};
+use crate::types::{Gas, ProfileData};
 use crate::{HostError, VMLogicError};
 use near_runtime_fees::Fee;
-use strum::EnumCount;
 
 #[cfg(feature = "costs_counting")]
 thread_local! {
@@ -13,7 +12,7 @@ thread_local! {
 type Result<T> = ::std::result::Result<T, VMLogicError>;
 
 /// Gas counter (a part of VMlogic)
-pub struct GasCounter<'a> {
+pub struct GasCounter {
     /// The amount of gas that was irreversibly used for contract execution.
     burnt_gas: Gas,
     /// `burnt_gas` + gas that was attached to the promises.
@@ -24,18 +23,26 @@ pub struct GasCounter<'a> {
     is_view: bool,
     ext_costs_config: ExtCostsConfig,
     /// Where to store profile data, if needed.
-    profile: Option<&'a mut Vec<u64>>,
+    profile: Option<ProfileData>,
 }
 
-impl<'a> GasCounter<'a> {
+impl GasCounter {
     pub fn new(
         ext_costs_config: ExtCostsConfig,
         max_gas_burnt: Gas,
         prepaid_gas: Gas,
         is_view: bool,
-        profile: Option<&'a mut Vec<u64> >,
+        profile: Option<ProfileData>,
     ) -> Self {
-        Self { ext_costs_config, burnt_gas: 0, used_gas: 0, max_gas_burnt, prepaid_gas, is_view, profile }
+        Self {
+            ext_costs_config,
+            burnt_gas: 0,
+            used_gas: 0,
+            max_gas_burnt,
+            prepaid_gas,
+            is_view,
+            profile,
+        }
     }
 
     pub fn deduct_gas(&mut self, burn_gas: Gas, use_gas: Gas) -> Result<()> {
@@ -68,7 +75,7 @@ impl<'a> GasCounter<'a> {
 
     #[cfg(feature = "costs_counting")]
     #[inline]
-    fn inc_ext_costs_counter(&self, cost: ExtCosts, value: u64) {
+    fn inc_ext_costs_counter(&mut self, cost: ExtCosts, value: u64) {
         EXT_COSTS_COUNTER.with(|f| {
             *f.borrow_mut().entry(cost).or_default() += value;
         });
@@ -76,29 +83,52 @@ impl<'a> GasCounter<'a> {
 
     #[cfg(not(feature = "costs_counting"))]
     #[inline]
-    fn inc_ext_costs_counter(&self, _cost: ExtCosts, _value: u64) {}
+    fn inc_ext_costs_counter(&mut self, _cost: ExtCosts, _value: u64) {}
+
+    #[cfg(feature = "costs_counting")]
+    #[inline]
+    fn update_profile_host(&mut self, cost: ExtCosts, value: u64) {
+        match &self.profile {
+            Some(profile) => *profile.borrow_mut().get_mut(cost as usize).unwrap() += value,
+            None => {}
+        };
+    }
+
+    #[cfg(not(feature = "costs_counting"))]
+    #[inline]
+    fn update_profile_host(&mut self, cost: ExtCosts, _value: u64) {}
+
+    #[cfg(feature = "costs_counting")]
+    #[inline]
+    fn update_profile_action(&mut self, action: Actions, value: u64) {
+        match &self.profile {
+            Some(profile) => {
+                *profile.borrow_mut().get_mut(action as usize + ExtCosts::count()).unwrap() += value
+            }
+            None => {}
+        };
+    }
+
+    #[cfg(not(feature = "costs_counting"))]
+    #[inline]
+    fn update_profile_action(&mut self, action: Actions, _value: u64) {}
 
     /// A helper function to pay per byte gas
     pub fn pay_per_byte(&mut self, cost: ExtCosts, num_bytes: u64) -> Result<()> {
-        self.inc_ext_costs_counter(cost, num_bytes);
         let use_gas = num_bytes
             .checked_mul(cost.value(&self.ext_costs_config))
             .ok_or(HostError::IntegerOverflow)?;
-        match &mut self.profile {
-            Some(profile) => *profile.get_mut(cost as usize).unwrap() += use_gas,
-            _ => {}
-        };
+
+        self.inc_ext_costs_counter(cost, num_bytes);
+        self.update_profile_host(cost, use_gas);
         self.deduct_gas(use_gas, use_gas)
     }
 
     /// A helper function to pay base cost gas
     pub fn pay_base(&mut self, cost: ExtCosts) -> Result<()> {
-        self.inc_ext_costs_counter(cost, 1);
         let base_fee = cost.value(&self.ext_costs_config);
-        match &mut self.profile {
-            Some(profile) => *profile.get_mut(cost as usize).unwrap() += base_fee,
-            _ => {}
-        };
+        self.inc_ext_costs_counter(cost, 1);
+        self.update_profile_host(cost, base_fee);
         self.deduct_gas(base_fee, base_fee)
     }
 
@@ -112,6 +142,7 @@ impl<'a> GasCounter<'a> {
         per_byte_fee: &Fee,
         num_bytes: u64,
         sir: bool,
+        action: Actions,
     ) -> Result<()> {
         let burn_gas =
             num_bytes.checked_mul(per_byte_fee.send_fee(sir)).ok_or(HostError::IntegerOverflow)?;
@@ -120,12 +151,7 @@ impl<'a> GasCounter<'a> {
                 num_bytes.checked_mul(per_byte_fee.exec_fee()).ok_or(HostError::IntegerOverflow)?,
             )
             .ok_or(HostError::IntegerOverflow)?;
-        match &mut self.profile {
-            Some(profile) => *profile.get_mut(ExtCosts::count() + 1).unwrap()
-                += burn_gas,
-            _ => {}
-        };
-
+        self.update_profile_action(action, burn_gas);
         self.deduct_gas(burn_gas, use_gas)
     }
 
@@ -133,15 +159,11 @@ impl<'a> GasCounter<'a> {
     /// # Args:
     /// * `base_fee`: base fee for the action;
     /// * `sir`: whether the receiver_id is same as the current account ID;
-    pub fn pay_action_base(&mut self, base_fee: &Fee, sir: bool) -> Result<()> {
+    pub fn pay_action_base(&mut self, base_fee: &Fee, sir: bool, action: Actions) -> Result<()> {
         let burn_gas = base_fee.send_fee(sir);
         let use_gas =
             burn_gas.checked_add(base_fee.exec_fee()).ok_or(HostError::IntegerOverflow)?;
-        match &mut self.profile {
-            Some(profile) => *profile.get_mut(ExtCosts::count() + 1).unwrap()
-                += burn_gas,
-            _ => {}
-        };
+        self.update_profile_action(action, burn_gas);
         self.deduct_gas(burn_gas, use_gas)
     }
 
@@ -158,8 +180,7 @@ mod tests {
     use super::*;
     #[test]
     fn test_deduct_gas() {
-        let mut counter = GasCounter::new(
-            ExtCostsConfig::default(), 10, 10, false, None);
+        let mut counter = GasCounter::new(ExtCostsConfig::default(), 10, 10, false, None);
         counter.deduct_gas(5, 10).expect("deduct_gas should work");
         assert_eq!(counter.burnt_gas(), 5);
         assert_eq!(counter.used_gas(), 10);

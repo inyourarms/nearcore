@@ -4,7 +4,7 @@ use crate::{cache, imports};
 use near_runtime_fees::RuntimeFeesConfig;
 use near_vm_errors::FunctionCallError::{WasmTrap, WasmUnknownError};
 use near_vm_errors::{CompilationError, FunctionCallError, MethodResolveError, VMError};
-use near_vm_logic::types::PromiseResult;
+use near_vm_logic::types::{ProfileData, PromiseResult};
 use near_vm_logic::{External, VMConfig, VMContext, VMLogic, VMLogicError, VMOutcome};
 use wasmer_runtime::Module;
 
@@ -182,7 +182,7 @@ pub fn run_wasmer<'a>(
     wasm_config: &'a VMConfig,
     fees_config: &'a RuntimeFeesConfig,
     promise_results: &'a [PromiseResult],
-    profile: Option<&'a mut Vec<u64>>,
+    profile: Option<ProfileData>,
 ) -> (Option<VMOutcome>, Option<VMError>) {
     if !cfg!(target_arch = "x86") && !cfg!(target_arch = "x86_64") {
         // TODO(#1940): Remove once NaN is standardized by the VM.

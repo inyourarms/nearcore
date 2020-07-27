@@ -1,6 +1,6 @@
 use near_runtime_fees::RuntimeFeesConfig;
 use near_vm_errors::VMError;
-use near_vm_logic::types::PromiseResult;
+use near_vm_logic::types::{ProfileData, PromiseResult};
 use near_vm_logic::{External, VMConfig, VMContext, VMKind, VMOutcome};
 
 /// `run` does the following:
@@ -81,6 +81,7 @@ pub fn run_vm<'a>(
         }
     }
 }
+
 pub fn run_vm_profiled<'a>(
     code_hash: Vec<u8>,
     code: &[u8],
@@ -91,7 +92,7 @@ pub fn run_vm_profiled<'a>(
     fees_config: &'a RuntimeFeesConfig,
     promise_results: &'a [PromiseResult],
     vm_kind: VMKind,
-    profile: &'a mut Vec<u64>,
+    profile: ProfileData,
 ) -> (Option<VMOutcome>, Option<VMError>) {
     use crate::wasmer_runner::run_wasmer;
     #[cfg(feature = "wasmtime_vm")]

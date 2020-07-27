@@ -8,13 +8,12 @@ pub mod serde_with;
 pub mod types;
 mod utils;
 
-pub use config::{ExtCosts, ExtCostsConfig, VMConfig, VMKind, VMLimitConfig};
+pub use config::{Actions, ExtCosts, ExtCostsConfig, VMConfig, VMKind, VMLimitConfig};
 pub use context::VMContext;
 pub use dependencies::{External, MemoryLike, ValuePtr};
 pub use logic::{VMLogic, VMOutcome};
 pub use near_vm_errors::{HostError, VMLogicError};
 pub use types::ReturnData;
-pub use strum_macros;
 
 #[cfg(feature = "costs_counting")]
 pub use gas_counter::EXT_COSTS_COUNTER;
