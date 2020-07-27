@@ -16,3 +16,4 @@ jobs:
           owner: nearprotocol
           base: beta
           head: beta
+          merge_method: rebase 
